@@ -1,0 +1,207 @@
+#!/bin/sh
+
+export SEQ_PRISMS_BIN=/dataset/gseq_processing/active/bin/resequencing_prism/seq_prisms 
+export RESEQUENCING_PRISM_BIN=/dataset/gseq_processing/active/bin/resequencing_prism
+
+
+resequencing_version=$1
+
+function get_run_opts() {
+
+   DRY_RUN=no
+   DEBUG=no
+   HPC_TYPE=slurm
+   FILES=""
+   OUTPUT_ROOT=""
+   REF_GENOME=""
+   SAMPLE_NAME=""
+
+   PROCESSING_ROOT=/dataset/gseq_processing/scratch/resequencing
+   PROCESSING_ROOT=/dataset/gseq_processing/scratch/resequencing
+
+
+   echo "*** resequencing analysis version $resequencing_version ***
+* note that you can paste into your terminal window by clicking your right mouse button
+* you can select text in the terminal window using your left mouse button
+* at any stage you can press CTRL-C to exit the dialogs
+* if you would prefer to run a single batch command, use resequencing_prism.sh (-h for help) - e.g. 
+  this allows you to run the analysis on any collection of input files
+"
+
+
+   ####### get and check SAMPLE_NAME
+   while [ 1 ] ; do
+      echo "
+please give the name of the sample you would like to resequence  (e.g. AANNZLM020058096514 )
+"
+      read SAMPLE_NAME
+      if [ ! -z "$SAMPLE_NAME" ]; then
+         mkdir -p $PROCESSING_ROOT/$SAMPLE_NAME
+         if [ ! -d $PROCESSING_ROOT/$SAMPLE_NAME ]; then
+            echo "unable to create output root $PROCESSING_ROOT/$SAMPLE_NAME - giving up"
+            exit 1
+         fi
+         OUTPUT_ROOT=$PROCESSING_ROOT/$SAMPLE_NAME
+         break
+      fi
+
+   done
+
+
+   # set up folder
+   while [ 1 ]; do
+      NEW_ROOT=$PROCESSING_ROOT/$SAMPLE_NAME
+      answer=""
+      echo "please specify output base folder (or just press Enter/Return to use default , $PROCESSING_ROOT/$SAMPLE_NAME)"
+      read answer
+      if [ ! -z $answer ]; then
+         NEW_ROOT=$answer
+      fi
+      if [ ! -z "$NEW_ROOT" ] ; then
+         if [ -d $NEW_ROOT ]; then
+            answer=y
+            echo "warning - $NEW_ROOT already exists, use anyway ? (y/n, default=y)"
+            read answer
+            if [[ ( $answer == "y" ) || ( -z $answer ) ]]; then
+               OUTPUT_ROOT=$NEW_ROOT
+               break
+            fi
+         else
+            mkdir -p $NEW_ROOT
+            if [ -d $NEW_ROOT ]; then
+               OUTPUT_ROOT=$NEW_ROOT
+               break
+            fi
+         fi
+      fi
+   done
+
+   echo "will use output root folder $OUTPUT_ROOT
+
+   "
+
+
+
+   ####### get and check files to process 
+   FILE_PATTERN=""
+   while [ 1 ]; do
+      if [ -f $OUTPUT_ROOT/input_file_list.txt ]; then
+         echo "will process the following files: . . . (press Enter/Return for a list - then press space bar to page through listing)"
+         read answer
+         more $OUTPUT_ROOT/input_file_list.txt
+         answer=y
+         echo "OK ? (default = y)"
+         read answer
+         if [ -z "$answer" ]; then
+            answer=y
+         fi
+         if [ $answer == "y" ]; then
+            break
+         else
+            echo "
+ok quitting - you can edit the file $OUTPUT_ROOT/input_file_list.txt in order to customise the
+files to process, or remove it so that the data folder is re-scanned for files to process, and try again"
+            exit 1
+         fi
+      fi
+
+      echo "please specify the files you would like to process (e.g. /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-13-5-1*)"
+      read FILE_PATTERN
+      if [ ! -z "$FILE_PATTERN" ]; then
+         echo "
+finding files to process..."
+         cmd="ls $FILE_PATTERN"
+         eval $cmd > $OUTPUT_ROOT/input_file_list.txt 2>/dev/null
+
+         if [ $? != 0 ]; then
+            echo "unable to find any files like $FILE_PATTERN"
+         fi
+      fi
+
+   done
+
+
+
+   exit
+
+   ####### get and check whether to run locally or on the cluster
+   echo "
+
+should this run be queued on the compute cluster ? (y/n, default=y. If n, will be run locally)
+"
+   answer=y   
+   read answer
+   if [ "$answer" != "n" ]; then 
+      HPC_TYPE=slurm
+   else
+      HPC_TYPE=local
+   fi
+   
+
+   ####### get and check the analysis type 
+   while [ 1 ] ; do
+      ANALYSIS=resequencing
+      echo "
+please give which analysis you want (all, trim, fastqc, map, mark_duplicates, gatk_recal, gatk_print, gatk_analyse, gatk_gvcf) (or just press enter to run all)  
+(notes :
+* entering all or later steps will automatically call dependencies) 
+)
+
+"
+      read ANALYSIS
+
+      if [ -z "$ANALYSIS" ]; then 
+         ANALYSIS=resequencing
+      fi
+
+      if [[ ( "$ANALYSIS" != "all" ) && ( "$ANALYSIS" != trim" ) && ( "$ANALYSIS" != "fastqc" ) && ( "$ANALYSIS" != "map" ) ]]; then
+         echo "analysis must be one of all, trim, fastqc, map, mark_duplicates, gatk_recal, gatk_print, gatk_analyse, gatk_gvcf"
+      else
+         break
+      fi
+   done
+
+   echo "will use analysis=$ANALYSIS
+   "
+
+
+   ####### get and check the blast data to use 
+   REF_GENOME=/dataset/datacache/archive/metagenomics/build/combined_092016_silva.fasta
+   while [ 1 ] ; do
+      echo "
+please give the full path to the blast database (or just press enter to use default, /dataset/datacache/archive/metagenomics/build/combined_092016_silva.fasta) 
+"
+      read REF_GENOME
+
+      if [ -z "$REF_GENOME" ]; then 
+         REF_GENOME=/dataset/datacache/archive/metagenomics/build/combined_092016_silva.fasta
+      fi
+
+      if [ -f ${REF_GENOME}.nin ]; then
+         break
+      else
+         echo "could not find blast index file ${REF_GENOME}.nin"
+      fi
+   done
+
+   echo "will use blast database $REF_GENOME"
+} # get_run_opts
+
+
+
+function run_resequencing_analysis() {
+   echo "about to process  data files listed in $OUTPUT_ROOT/input_file_list.txt, writing results to $OUTPUT_ROOT"
+   echo "press enter to continue (or CTRL-C to cancel)"
+   read junk 
+   set -x
+   time $RESEQUENCING_PRISM_BIN/resequencing_prism.sh -s $SAMPLE_NAME -r $REF_GENOME -a $ANALYSIS -O  $OUTPUT_ROOT `cat $OUTPUT_ROOT/input_file_list.txt`
+   set +x
+
+}
+
+
+get_run_opts
+
+
+run_resequencing_analysis
+        
