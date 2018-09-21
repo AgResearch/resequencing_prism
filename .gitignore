@@ -1,0 +1,6 @@
+*.log
+batch1.sh
+conda/
+etc/TruSeq3-PE.fa
+seq_prisms/
+test/

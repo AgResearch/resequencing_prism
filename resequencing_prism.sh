@@ -10,22 +10,20 @@ function get_opts() {
    OUT_DIR=
    MAX_TASKS=1
    FORCE=no
-   taxonomy_blast_database=
-   taxonomy_lookup_file=
-   seqlength_min=200
-   similarity=0.97
+   ref_genome=
+   sample_name=
    help_text="
 \n
-./resequencing_prism.sh  [-h] [-n] [-d] [-b blast_data -t tax_data -m min_length -s similarity  -O outdir [-C local|slurm ] input_file_names\n
+./resequencing_prism.sh  [-h] [-n] [-d] -s sample_namea -r ref_genome_index -O outdir [-C local|slurm ] input_R1 input_R2 [ input_R1 input_R2 etc ] \n
 \n
 \n
 example:\n
-./resequencing_prism.sh -n -b /dataset/datacache/archive/metagenomics/build/combined_092016_silva.fasta -t /dataset/datacache/archive/metagenomics/build/combined_092016_silva.taxonomy -m 200 -s 0.99  -O /dataset/PJ_MGS00116/ztmp/Output_BWA01_R1_99   /dataset/PJ_MGS00116/scratch/MGS00116/Output_BWA01/*_R1_*.fastq.trimmed.gz\n
+./resequencing_prism.sh -n -r /dataset/datacache/scratch/misc/indexes/bwa/ARS-UCD1.2_Btau5.0.1Y.fa -s AANNZLM017427080180 -O /dataset/gseq_processing/scratch/resequencing/1000_bulls_2018/AANNZLM017427080180   /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R2_001.fastq.gz\n
 \n
 "
 
    # defaults:
-   while getopts ":nhdfO:C:b:t:m:s:" opt; do
+   while getopts ":nhdfO:C:r:s:" opt; do
    case $opt in
        n)
          DRY_RUN=yes
@@ -46,17 +44,11 @@ example:\n
        C)
          HPC_TYPE=$OPTARG
          ;;
-       b)
-         taxonomy_blast_database=$OPTARG
-         ;;
-       t)
-         taxonomy_lookup_file=$OPTARG
-         ;;
-       m)
-         seqlength_min=$OPTARG
+       r)
+         ref_genome_index=$OPTARG
          ;;
        s)
-         similarity=$OPTARG
+         sample_name=$OPTARG
          ;;
        \?)
          echo "Invalid option: -$OPTARG" >&2
@@ -97,22 +89,8 @@ function check_opts() {
       echo "HPC_TYPE must be one of local, slurm"
       exit 1
    fi
-   if [ ! -f ${taxonomy_blast_database}.nin  ]; then
-      echo "bad blast database (cant see ${taxonomy_blast_database}.nin ) (you might need to supply the full path ?)"
-      exit 1
-   fi
-   if [ ! -f $taxonomy_lookup_file ]; then
-      echo "tax lookup file ($taxonomy_lookup_file ) not found (you might need to supply the full path  ?) "
-      exit 1
-   fi
-   python -c "print float('$similarity')" >/dev/null 2>&1
-   if [ $? != 0 ]; then
-      echo "looks like similarity requested ( $similarity ) is not a number"
-      exit 1
-   fi
-   python -c "print float('$seqlength_min')" >/dev/null 2>&1
-   if [ $? != 0 ]; then
-      echo "looks like min seq length requested ( $seqlength_min ) is not a number"
+   if [ ! -f ${ref_genome_index}.bwt  ]; then
+      echo "bad index  (cant see ${ref_genome_index}.bwt ) (you might need to supply the full path ?)"
       exit 1
    fi
 }
@@ -122,10 +100,8 @@ function echo_opts() {
   echo DRY_RUN=$DRY_RUN
   echo DEBUG=$DEBUG
   echo HPC_TYPE=$HPC_TYPE
-  echo seqlength_min=$seqlength_min
-  echo taxonomy_blast_database=$taxonomy_blast_database
-  echo taxonomy_lookup_file=$taxonomy_lookup_file
-  echo similarity=$similarity
+  echo sample_name=$sample_name
+  echo ref_genome_index=$ref_genome_index
 }
 
 #
@@ -135,38 +111,13 @@ function echo_opts() {
 function configure_env() {
    export CONDA_ENVS_PATH=$CONDA_ENVS_PATH:/dataset/bioinformatics_dev/active/conda-env
 
-   cd $BATCH_QIIME_PRISM_BIN
+   cd $RESEQUENCING_PRISM_BIN
    cp ./resequencing_prism.sh $OUT_DIR
    cp ./resequencing_prism.mk $OUT_DIR
-   cp ./add_sample_name.py $OUT_DIR
-   cp ./tax_summary_heatmap.r $OUT_DIR
-   cat >$OUT_DIR/tardis.toml <<EOF
-seqlength_min=$seqlength_min
-EOF
+   cp ./get_rg.py  $OUT_DIR
    echo "
-export CONDA_ENVS_PATH=$CONDA_ENVS_PATH
-conda activate biopython
-PATH="$OUT_DIR:\$PATH"
-PYTHONPATH="$OUT_DIR:\$PYTHONPATH"
-" > $OUT_DIR/configure_biopython_env.src
-   echo "
-export CONDA_ENVS_PATH=$CONDA_ENVS_PATH
-conda activate bioconductor
-PATH="$OUT_DIR:\$PATH"
-PYTHONPATH="$OUT_DIR:\$PYTHONPATH"
-" > $OUT_DIR/configure_bioconductor_env.src
-   echo "
-export CONDA_ENVS_PATH=$CONDA_ENVS_PATH
-conda activate qiime_1
-PATH="$OUT_DIR:\$PATH"
-PYTHONPATH="$OUT_DIR:\$PYTHONPATH"
-export QIIME_CONFIG_FP=$OUT_DIR/qiime_config
-" > $OUT_DIR/configure_qiime_env.src
-
-   # set up a custom qiime config , so as to use a different tmpdir (default can be too small)
-   cp $BATCH_QIIME_PRISM_BIN/etc/qiime_config_template $OUT_DIR/qiime_config
-   echo "temp_dir $OUT_DIR" | awk '{printf("%s\t%s\n",$1,$2);}' - >> $OUT_DIR/qiime_config
-   echo "run will use qiime config file $OUT_DIR/qiime_config"
+conda activate /dataset/gseq_processing/active/bin/resequencing_prism/conda/resequencing_prism
+" > $OUT_DIR/resequencing_prism_env.src
 
    cd $OUT_DIR
 }
@@ -177,8 +128,8 @@ function check_env() {
       echo "SEQ_PRISMS_BIN not set - exiting"
       exit 1
    fi
-   if [ -z "$BATCH_QIIME_PRISM_BIN" ]; then
-      echo "BATCH_QIIME_PRISM_BIN not set - exiting"
+   if [ -z "$RESEQUENCING_PRISM_BIN" ]; then
+      echo "RESEQUENCING_PRISM_BIN not set - exiting"
       exit 1
    fi
 }
@@ -186,20 +137,23 @@ function check_env() {
 function get_targets() {
 
    rm -f $OUT_DIR/resequencing_targets.txt
-   rm -f $OUT_DIR/processed_file_targets.txt
    rm -f $OUT_DIR/input_file_list.txt
-   touch $OUT_DIR/processed_file_targets.txt
 
-   for ((j=0;$j<$NUM_FILES;j=$j+1)) do
-      file=${files_array[$j]}
-      echo $file >> $OUT_DIR/input_file_list.txt
-      file_base=`basename $file`
-      parameters_moniker=`basename $taxonomy_blast_database`
-      parameters_moniker=${parameters_moniker}.`basename taxonomy_lookup_file`
-      parameters_moniker=${parameters_moniker}.len${seqlength_min}
-      parameters_moniker=${parameters_moniker}.sim${similarity}
+   for ((j=0;$j<$NUM_FILES;j=$j+2)) do
+      R1=${files_array[$j]}
+      R2=${files_array[$j+1]}
 
-      SUMMARY_TARGETS="$SUMMARY_TARGETS $OUT_DIR/${file_base}.${parameters_moniker}.1"
+      if [[ ( ! -f $R1 ) || ( ! -f $R2 ) ]]; then
+         echo "could not find either file $R1 or file $R2"
+         exit 1
+      fi
+
+      echo $R1 $R2 >> $OUT_DIR/input_file_list.txt
+
+      file_base=`basename $R1`
+      parameters_moniker=`basename $sample_name`
+      parameters_moniker=${parameters_moniker}.`basename $ref_genome_index`
+
       moniker=${file_base}.${parameters_moniker}
       echo $OUT_DIR/${moniker}.resequencing_prism >> $OUT_DIR/resequencing_targets.txt
 
@@ -213,15 +167,41 @@ function get_targets() {
          fi
       fi
 
+
       echo "#!/bin/bash
-#prepare length-filtered fasta files with sequence naming syntax suitable for qiime
-tardis -d $OUT_DIR -c 999999999  cat _condition_fastq2fasta_input_$file \| $OUT_DIR/add_sample_name.py $file \> _condition_uncompressedtext_output_$OUT_DIR/${file_base}.combined.fasta
+# set up shortcuts to paired files 
+cp -s $R1  $OUT_DIR
+cp -s $R2  $OUT_DIR
+cd $OUT_DIR
+
+# get read-goup info 
+RG=\`./get_rg.py --subject $sample_name $R1 $R2 \`
+prefix=\`./get_rg.py --subject $sample_name  -t common_prefix $R1 $R2 \`
+cp $RESEQUENCING_PRISM_BIN/etc/env.inc .
+cp $RESEQUENCING_PRISM_BIN/etc/TruSeq3-PE.fa .
+
+R1link=$OUT_DIR/\`basename $R1\`
+R2link=$OUT_DIR/\`basename $R2\`
+summary=$OUT_DIR/\$prefix.trim_summary
+R1_trimmed=$OUT_DIR/\${prefix}1.trimmed.fastq
+R2_trimmed=$OUT_DIR/\${prefix}2.trimmed.fastq
+R1_single=$OUT_DIR/\${prefix}1.single.fastq
+R2_single=$OUT_DIR/\${prefix}2.single.fastq
+paired_sam=$OUT_DIR/\${prefix}_paired.sam
+single1_sam=$OUT_DIR/\${prefix}_1.sam
+single2_sam=$OUT_DIR/\${prefix}_2.sam
+
+time tardis -d $OUT_DIR -c 8000000 --shell-include-file env.inc trimmomatic PE -threads 8 -summary _condition_uncompressedtext_output_\$summary _condition_fastq_input_\$R1link _condition_fastq_input_\$R2link _condition_throughput_\$R1_trimmed  _condition_throughput_\$R1_single  _condition_throughput_\$R2_trimmed _condition_throughput_\$R2_single ILLUMINACLIP:$OUT_DIR/TruSeq3-PE.fa:2:30:3:1:true LEADING:20 TRAILING:20 SLIDINGWINDOW:3:15 AVGQUAL:20 MINLEN:35 \; bwa mem -M -t 8 -R \$RG $ref_genome_index _condition_throughput_\$R1_trimmed  _condition_throughput_\$R2_trimmed  \> _condition_uncompressedsam_output_\$paired_sam \;  bwa mem -M -t 8 -R \$RG $ref_genome_index _condition_throughput_\$R1_single \> _condition_uncompressedsam_output_\$single1_sam \; bwa mem -M -t 8 -R \$RG $ref_genome_index _condition_throughput_\$R2_single  \> _condition_uncompressedsam_output_\$single2_sam
+
+
+for samfile in \$paired_sam \$single1_sam \$single2_sam; do
+   moniker=\`basename \$samfile .sam\`
+   sorted_bamfile=\${moniker}.sorted.bam
+   time tardis -d $OUT_DIR --shell-include-file env.inc samtools sort -o $OUT_DIR/\$sorted_bamfile -O BAM \$samfile
+   time tardis -d $OUT_DIR --shell-include-file env.inc samtools index $OUT_DIR/\$sorted_bamfile
+done
 " > $script_filename
       chmod +x $script_filename 
-
-
-      # append output to processed targets 
-      echo $OUT_DIR/${file_base}.combined.fasta >> $OUT_DIR/processed_file_targets.txt
    done 
 }
 
@@ -237,87 +217,6 @@ function fake_prism() {
 function run_prism() {
    # this prepares each file
    make -f resequencing_prism.mk -d -k  --no-builtin-rules -j 16 `cat $OUT_DIR/resequencing_targets.txt` > $OUT_DIR/resequencing_prism.log 2>&1
-
-   # if necessary (re)create the single output file 
-   target_count=`wc $OUT_DIR/processed_file_targets.txt | awk '{print $1}' -`
-   if [[ ( $target_count > 0 ) || ( ! -f $OUT_DIR/combined.fa ) ]]; then
-      echo "(re)building combined.fa"
-      rm -f $OUT_DIR/combined.fa
-      for filename in `cat $OUT_DIR/processed_file_targets.txt`; do
-         cat $filename >> $OUT_DIR/combined.fa
-      done
-   else
-      echo "(not rebuilding $OUT_DIR/combined.fa )"
-   fi
-
-   # pick OTU
-   if [ -f $OUT_DIR/qiime_uclust/combined_clusters.uc ]; then
-      echo "skipping otu picking as $OUT_DIR/qiime_uclust/combined_clusters.uc already exists"
-   else
-      tardis --shell-include-file $OUT_DIR/configure_qiime_env.src pick_otus.py -m uclust -s $similarity -i $OUT_DIR/combined.fa -o $OUT_DIR/qiime_uclust > $OUT_DIR/pick_otu.log 2>&1
-      if [ $? != 0 ]; then
-         echo "** error code returned from pick_otus.py job, giving up **"
-         exit 1
-      fi
-   fi
-
-
-   # pick rep_set
-   if [ -f $OUT_DIR/qiime_uclust/combined_rep_set.txt  ]; then
-      echo "skipping rep_set picking as $OUT_DIR/qiime_uclust/combined_rep_set.txt already exists"
-   else
-      tardis --shell-include-file $OUT_DIR/configure_qiime_env.src pick_rep_set.py -i $OUT_DIR/qiime_uclust/combined_otus.txt -f $OUT_DIR/combined.fa -o $OUT_DIR/qiime_uclust/combined_rep_set.txt > $OUT_DIR/pick_rep_set.log 2>&1
-      if [ $? != 0 ]; then
-         echo "** error code returned from pick_rep_set.py job, giving up **"
-         exit 1
-      fi
-   fi
-
-   # assign taxonomy
-   if [ -f $OUT_DIR/qiime_uclust/combined_rep_set_tax_assignments.txt  ]; then
-      echo "skipping assign_taxonomy as $OUT_DIR/qiime_uclust/combined_rep_set_tax_assignments.txt already exists"
-   else
-      tardis --shell-include-file $OUT_DIR/configure_qiime_env.src assign_taxonomy.py -i _condition_fasta_input_$OUT_DIR/qiime_uclust/combined_rep_set.txt -m blast -t $taxonomy_lookup_file  -b $taxonomy_blast_database -o . '_condition_uncompressedtext_product_combined_rep_set\.\d{5}_tax_assignments\.txt,'$OUT_DIR'/qiime_uclust/combined_rep_set_tax_assignments.txt' 1\>_condition_text_output_$OUT_DIR/qiime_uclust/combined_rep_set_tax_assignments.stdout 2\>_condition_text_output_$OUT_DIR/qiime_uclust/combined_rep_set_tax_assignments.stderr
-      if [ $? != 0 ]; then
-         echo "** error code returned from assign_taxonomy, giving up **"
-         exit 1
-      fi
-   fi
-
-   # make otu table 
-   if [ -f $OUT_DIR/qiime_uclust/combined_rep_set_otu_table.txt  ]; then
-      echo "skipping otu table as $OUT_DIR/qiime_uclust/combined_rep_set_otu_table.txt already exists"
-   else
-      tardis --shell-include-file $OUT_DIR/configure_qiime_env.src make_otu_table.py -i $OUT_DIR/qiime_uclust/combined_otus.txt -t $OUT_DIR/qiime_uclust/combined_rep_set_tax_assignments.txt -o $OUT_DIR/qiime_uclust/combined_rep_set_otu_table.txt  1\>$OUT_DIR/qiime_uclust/make_otu_table.stdout 2\>$OUT_DIR/qiime_uclust/make_otu_table.stderr
-      if [ $? != 0 ]; then
-         echo "** error code returned from make_otu_table, giving up **"
-         exit 1
-      fi
-   fi
-
-   # summarise taxa
-   if [ -f $OUT_DIR/qiime_uclust/combined_rep_set_otu_table_L10.txt  ]; then
-      echo "skipping summarise taxa as landmark $OUT_DIR/qiime_uclust/combined_rep_set_otu_table_L10.txt already exists"
-   else
-      tardis --shell-include-file $OUT_DIR/configure_qiime_env.src summarize_taxa.py -i $OUT_DIR/qiime_uclust/combined_rep_set_otu_table.txt -o $OUT_DIR/qiime_uclust -a -L 4,6,7,10 1\>$OUT_DIR/qiime_uclust/summarize_taxa.stdout 2\>$OUT_DIR/qiime_uclust/summarize_taxa.stderr
-      if [ $? != 0 ]; then
-         echo "** error code returned from summarize_taxa, giving up **"
-         exit 1
-      fi
-   fi
-
-
-   # do plots
-   if [ -f $OUT_DIR/qiime_uclust/combined_rep_set_otu_table_L10.jpg  ]; then
-      echo "skipping plots as landmark $OUT_DIR/qiime_uclust/combined_rep_set_otu_table_L10.jpg already exists"
-   else
-      tardis --shell-include-file $OUT_DIR/configure_bioconductor_env.src Rscript --vanilla ./tax_summary_heatmap.r num_profiles=30 moniker=combined_rep_set_otu_table_L10 datafolder=$OUT_DIR/qiime_uclust 1\>$OUT_DIR/qiime_uclust/tax_summary_heatmap.stdout 2\>$OUT_DIR/qiime_uclust/tax_summary_heatmap.stderr
-      tardis --shell-include-file $OUT_DIR/configure_bioconductor_env.src Rscript --vanilla ./tax_summary_heatmap.r num_profiles=30 moniker=combined_rep_set_otu_table_L4 datafolder=$OUT_DIR/qiime_uclust 1\>\>$OUT_DIR/qiime_uclust/tax_summary_heatmap.stdout 2\>\>$OUT_DIR/qiime_uclust/tax_summary_heatmap.stderr
-      tardis --shell-include-file $OUT_DIR/configure_bioconductor_env.src Rscript --vanilla ./tax_summary_heatmap.r num_profiles=30 moniker=combined_rep_set_otu_table_L6 datafolder=$OUT_DIR/qiime_uclust 1\>\>$OUT_DIR/qiime_uclust/tax_summary_heatmap.stdout 2\>\>$OUT_DIR/qiime_uclust/tax_summary_heatmap.stderr
-      tardis --shell-include-file $OUT_DIR/configure_bioconductor_env.src Rscript --vanilla ./tax_summary_heatmap.r num_profiles=30 moniker=combined_rep_set_otu_table_L7 datafolder=$OUT_DIR/qiime_uclust 1\>\>$OUT_DIR/qiime_uclust/tax_summary_heatmap.stdout 2\>\>$OUT_DIR/qiime_uclust/tax_summary_heatmap.stderr
-   fi
-
-
 }
 
 function clean() {
