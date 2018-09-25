@@ -10,20 +10,25 @@ function get_opts() {
    OUT_DIR=
    MAX_TASKS=1
    FORCE=no
-   ref_genome=
+   ref_genome_index=
+   ref_genome_sequence=
+   variant_info=
    sample_name=
+   gatk_jar=/dataset/gseq_processing/active/bin/resequencing_prism/gatk/GenomeAnalysisTK-3.8-1-0-gf15c1c3ef/GenomeAnalysisTK.jar
+
+   OPTICAL_DUPLICATE_PIXEL_DISTANCE=100
    help_text="
 \n
 ./resequencing_prism.sh  [-h] [-n] [-d] -s sample_namea -r ref_genome_index -O outdir [-C local|slurm ] input_R1 input_R2 [ input_R1 input_R2 etc ] \n
 \n
 \n
 example:\n
-./resequencing_prism.sh -n -r /dataset/datacache/scratch/misc/indexes/bwa/ARS-UCD1.2_Btau5.0.1Y.fa -s AANNZLM017427080180 -O /dataset/gseq_processing/scratch/resequencing/1000_bulls_2018/AANNZLM017427080180   /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R2_001.fastq.gz\n
+./resequencing_prism.sh -n -r /dataset/datacache/scratch/misc/genomes/ARS-UCD1.2_Btau5.0.1Y.fa -b /dataset/datacache/scratch/misc/indexes/bwa/ARS-UCD1.2_Btau5.0.1Y.fa -v /dataset/datacache/scratch/misc/genomes/ARS1.2PlusY_BQSR.vcf.gz -s AANNZLM017427080180 -O /dataset/gseq_processing/scratch/resequencing/1000_bulls_2018/AANNZLM017427080180   /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R2_001.fastq.gz\n
 \n
 "
 
    # defaults:
-   while getopts ":nhdfO:C:r:s:" opt; do
+   while getopts ":nhdfO:C:r:s:b:v:" opt; do
    case $opt in
        n)
          DRY_RUN=yes
@@ -44,8 +49,14 @@ example:\n
        C)
          HPC_TYPE=$OPTARG
          ;;
-       r)
+       b)
          ref_genome_index=$OPTARG
+         ;;
+       r)
+         ref_genome_sequence=$OPTARG
+         ;;
+       v)
+         variant_info=$OPTARG
          ;;
        s)
          sample_name=$OPTARG
@@ -93,6 +104,15 @@ function check_opts() {
       echo "bad index  (cant see ${ref_genome_index}.bwt ) (you might need to supply the full path ?)"
       exit 1
    fi
+   if [ ! -f $ref_genome_sequence  ]; then
+      echo "no such file $ref_genome_sequence"
+      exit 1
+   fi
+   if [ ! -f $variant_info  ]; then
+      echo "no such file $variant_info"
+      exit 1
+   fi
+
 }
 
 function echo_opts() {
@@ -115,6 +135,7 @@ function configure_env() {
    cp ./resequencing_prism.sh $OUT_DIR
    cp ./resequencing_prism.mk $OUT_DIR
    cp ./get_rg.py  $OUT_DIR
+   cp ./etc/tardis.toml $OUT_DIR
    echo "
 conda activate /dataset/gseq_processing/active/bin/resequencing_prism/conda/resequencing_prism
 " > $OUT_DIR/resequencing_prism_env.src
@@ -138,6 +159,7 @@ function get_targets() {
 
    rm -f $OUT_DIR/resequencing_targets.txt
    rm -f $OUT_DIR/input_file_list.txt
+   picard_merge_input_string=""
 
    for ((j=0;$j<$NUM_FILES;j=$j+2)) do
       R1=${files_array[$j]}
@@ -157,7 +179,12 @@ function get_targets() {
       moniker=${file_base}.${parameters_moniker}
       echo $OUT_DIR/${moniker}.resequencing_prism >> $OUT_DIR/resequencing_targets.txt
 
-      # generate wrapper
+      prefix=`./get_rg.py --subject $sample_name  -t common_prefix $R1 $R2`
+      picard_merge_string="$picard_merge_string I=${prefix}_paired.sorted.bam I=${prefix}_1.sorted.bam I=${prefix}_2.sorted.bam"
+
+    
+
+      # generate wrapper alignment script 
       script_filename=$OUT_DIR/${moniker}.sh
 
       if [ -f $script_filename ]; then
@@ -176,33 +203,97 @@ cd $OUT_DIR
 
 # get read-goup info 
 RG=\`./get_rg.py --subject $sample_name $R1 $R2 \`
-prefix=\`./get_rg.py --subject $sample_name  -t common_prefix $R1 $R2 \`
 cp $RESEQUENCING_PRISM_BIN/etc/env.inc .
 cp $RESEQUENCING_PRISM_BIN/etc/TruSeq3-PE.fa .
 
 R1link=$OUT_DIR/\`basename $R1\`
 R2link=$OUT_DIR/\`basename $R2\`
-summary=$OUT_DIR/\$prefix.trim_summary
-R1_trimmed=$OUT_DIR/\${prefix}1.trimmed.fastq
-R2_trimmed=$OUT_DIR/\${prefix}2.trimmed.fastq
-R1_single=$OUT_DIR/\${prefix}1.single.fastq
-R2_single=$OUT_DIR/\${prefix}2.single.fastq
-paired_sam=$OUT_DIR/\${prefix}_paired.sam
-single1_sam=$OUT_DIR/\${prefix}_1.sam
-single2_sam=$OUT_DIR/\${prefix}_2.sam
+summary=$OUT_DIR/$prefix.trim_summary
+R1_trimmed=$OUT_DIR/${prefix}1.trimmed.fastq
+R2_trimmed=$OUT_DIR/${prefix}2.trimmed.fastq
+R1_single=$OUT_DIR/${prefix}1.single.fastq
+R2_single=$OUT_DIR/${prefix}2.single.fastq
+paired_sam=$OUT_DIR/${prefix}_paired.sam
+single1_sam=$OUT_DIR/${prefix}_1.sam
+single2_sam=$OUT_DIR/${prefix}_2.sam
 
-time tardis -d $OUT_DIR -c 8000000 --shell-include-file env.inc trimmomatic PE -threads 8 -summary _condition_uncompressedtext_output_\$summary _condition_fastq_input_\$R1link _condition_fastq_input_\$R2link _condition_throughput_\$R1_trimmed  _condition_throughput_\$R1_single  _condition_throughput_\$R2_trimmed _condition_throughput_\$R2_single ILLUMINACLIP:$OUT_DIR/TruSeq3-PE.fa:2:30:3:1:true LEADING:20 TRAILING:20 SLIDINGWINDOW:3:15 AVGQUAL:20 MINLEN:35 \; bwa mem -M -t 8 -R \$RG $ref_genome_index _condition_throughput_\$R1_trimmed  _condition_throughput_\$R2_trimmed  \> _condition_uncompressedsam_output_\$paired_sam \;  bwa mem -M -t 8 -R \$RG $ref_genome_index _condition_throughput_\$R1_single \> _condition_uncompressedsam_output_\$single1_sam \; bwa mem -M -t 8 -R \$RG $ref_genome_index _condition_throughput_\$R2_single  \> _condition_uncompressedsam_output_\$single2_sam
+time tardis --hpctype $HPC_TYPE -d $OUT_DIR -c 6000000 --shell-include-file env.inc trimmomatic PE -threads 8 -summary _condition_uncompressedtext_output_\$summary _condition_fastq_input_\$R1link _condition_fastq_input_\$R2link _condition_throughput_\$R1_trimmed  _condition_throughput_\$R1_single  _condition_throughput_\$R2_trimmed _condition_throughput_\$R2_single ILLUMINACLIP:$OUT_DIR/TruSeq3-PE.fa:2:30:3:1:true LEADING:20 TRAILING:20 SLIDINGWINDOW:3:15 AVGQUAL:20 MINLEN:35 \; bwa mem -M -t 8 -R \$RG $ref_genome_index _condition_throughput_\$R1_trimmed  _condition_throughput_\$R2_trimmed  \> _condition_uncompressedsam_output_\$paired_sam \;  bwa mem -M -t 8 -R \$RG $ref_genome_index _condition_throughput_\$R1_single \> _condition_uncompressedsam_output_\$single1_sam \; bwa mem -M -t 8 -R \$RG $ref_genome_index _condition_throughput_\$R2_single  \> _condition_uncompressedsam_output_\$single2_sam
 
 
 for samfile in \$paired_sam \$single1_sam \$single2_sam; do
    moniker=\`basename \$samfile .sam\`
    sorted_bamfile=\${moniker}.sorted.bam
-   time tardis -d $OUT_DIR --shell-include-file env.inc samtools sort -o $OUT_DIR/\$sorted_bamfile -O BAM \$samfile
-   time tardis -d $OUT_DIR --shell-include-file env.inc samtools index $OUT_DIR/\$sorted_bamfile
+   time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc samtools sort -o $OUT_DIR/\$sorted_bamfile -O BAM \$samfile
+   time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc samtools index $OUT_DIR/\$sorted_bamfile
 done
 " > $script_filename
       chmod +x $script_filename 
-   done 
+   done    # end loop generating alignment script per pair
+
+
+   ######## generate global sripts which use all output bams ##########
+   prefix=`./get_rg.py --subject $sample_name  -t common_prefix \`cat $OUT_DIR/input_file_list.txt\``
+   moniker="allfiles_$prefix"
+
+
+   # generate merge and mark duplicates script
+   merge_script_filename=$OUT_DIR/${moniker}.merge.sh
+
+   if [ -f $merge_script_filename ]; then
+      if [ ! $FORCE == yes ]; then
+         echo "found existing merge script $merge_script_filename - will re-use (use -f to force rebuild ) "
+         continue
+      fi
+   fi
+
+   echo "#!/bin/bash
+cd $OUT_DIR
+time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc picard MergeSamFiles $picard_merge_string O=${sample_name}.sorted.bam VALIDATION_STRINGENCY=LENIENT ASSUME_SORTED=true MERGE_SEQUENCE_DICTIONARIES=true
+
+time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc picard MarkDuplicates TMP_DIR=$OUT_DIR I=${sample_name}.sorted.bam O=${sample_name}_dedup.bam M=${sample_name}_dedup.metrics OPTICAL_DUPLICATE_PIXEL_DISTANCE=$OPTICAL_DUPLICATE_PIXEL_DISTANCE CREATE_INDEX=true VALIDATION_STRINGENCY=LENIENT
+
+" > $merge_script_filename
+   chmod +x $merge_script_filename
+
+
+
+   # generate recalibrate script
+   recal_script_filename=$OUT_DIR/${moniker}.recal.sh
+
+   if [ -f $recal_script_filename ]; then
+      if [ ! $FORCE == yes ]; then
+         echo "found existing recal script $recal_script_filename - will re-use (use -f to force rebuild ) "
+         continue
+      fi
+   fi
+
+   echo "#!/bin/bash
+cd $OUT_DIR
+time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc java -Xmx80G -jar $gatk_jar  -T BaseRecalibrator -nct 8 -R $ref_genome_sequence  -I ${sample_name}_dedup.bam -knownSites:vcf $variant_info -o ${sample_name}.recal.table
+
+time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc java -Xmx80G -jar $gatk_jar -T PrintReads -nct 8 -R $ref_genome_sequence -I ${sample_name}_dedup.bam  -BQSR ${sample_name}.recal.table -o ${sample_name}_dedup_recal.bam
+
+" > $recal_script_filename
+   chmod +x $recal_script_filename
+
+
+   # generate vcf script
+   vcf_script_filename=$OUT_DIR/${moniker}.vcf.sh
+
+   if [ -f $vcf_script_filename ]; then
+      if [ ! $FORCE == yes ]; then
+         echo "found existing vcf script $vcf_script_filename - will re-use (use -f to force rebuild ) "
+         continue
+      fi
+   fi
+
+   echo "#!/bin/bash
+cd $OUT_DIR
+time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc java -Xmx80G -jar $gatk_jar -T HaplotypeCaller -nct 8 -R $ref_genome_sequence -I ${sample_name}_dedup_recal.bam -o ${sample_name}_dedup_recal.g.vcf.gz -ERC GVCF -variant_index_type LINEAR -variant_index_parameter 128000
+
+
+" > $vcf_script_filename
+   chmod +x $vcf_script_filename
 }
 
 
@@ -221,11 +312,14 @@ function run_prism() {
 
 function clean() {
    rm -rf $OUT_DIR/tardis_*
+   rm $OUT_DIR/*.sam
 }
 
 
-function html_prism() {
-   echo "tba" > $OUT_DIR/resequencing_prism.html 2>&1
+function merge_and_gatk_prism() {
+   $merge_script_filename > $OUT_DIR/merge.log 2>&1
+   $recal_script_filename > $OUT_DIR/recal.log 2>&1
+   $vcf_script_filename > $OUT_DIR/vcf.log 2>&1
 }
 
 
@@ -241,8 +335,10 @@ function main() {
    else
       run_prism
       if [ $? == 0 ] ; then
-         clean
-         html_prism
+         merge_and_gatk_prism
+         if [ $? == 0 ] ; then
+            clean
+         fi
       else
          echo "error state from resequencing run - skipping clean and html page generation"
          exit 1
