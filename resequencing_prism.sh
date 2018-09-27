@@ -19,11 +19,19 @@ function get_opts() {
    OPTICAL_DUPLICATE_PIXEL_DISTANCE=100
    help_text="
 \n
-./resequencing_prism.sh  [-h] [-n] [-d] -s sample_namea -r ref_genome_index -O outdir [-C local|slurm ] input_R1 input_R2 [ input_R1 input_R2 etc ] \n
+./resequencing_prism.sh  [-h (=help)] [-n (=dry run)] [-d (=debug - no clean up)] [-f (=overwrite any existing scritps)] [-C local|slurm] -s sample_namea -r ref_genome_index -b bwa_index -v variant_info -O outdir  input_R1 input_R2 [ input_R1 input_R2 . . . ] \n
 \n
 \n
-example:\n
+examples:\n
+# dry run - only generate scripts etc\n
 ./resequencing_prism.sh -n -r /dataset/datacache/scratch/misc/genomes/ARS-UCD1.2_Btau5.0.1Y.fa -b /dataset/datacache/scratch/misc/indexes/bwa/ARS-UCD1.2_Btau5.0.1Y.fa -v /dataset/datacache/scratch/misc/genomes/ARS1.2PlusY_BQSR.vcf.gz -s AANNZLM017427080180 -O /dataset/gseq_processing/scratch/resequencing/1000_bulls_2018/AANNZLM017427080180   /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R2_001.fastq.gz\n
+
+# run everything on local machine (default is to schedule everything on slurm cluster) \n
+./resequencing_prism.sh -C local -r /dataset/datacache/scratch/misc/genomes/ARS-UCD1.2_Btau5.0.1Y.fa -b /dataset/datacache/scratch/misc/indexes/bwa/ARS-UCD1.2_Btau5.0.1Y.fa -v /dataset/datacache/scratch/misc/genomes/ARS1.2PlusY_BQSR.vcf.gz -s AANNZLM017427080180 -O /dataset/gseq_processing/scratch/resequencing/1000_bulls_2018/AANNZLM017427080180   /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R2_001.fastq.gz\n
+
+# process multiple pairs of input files 
+./resequencing_prism.sh -r /dataset/datacache/scratch/misc/genomes/ARS-UCD1.2_Btau5.0.1Y.fa -b /dataset/datacache/scratch/misc/indexes/bwa/ARS-UCD1.2_Btau5.0.1Y.fa -v /dataset/datacache/scratch/misc/genomes/ARS1.2PlusY_BQSR.vcf.gz -s HERNZLM000281000146 -O /dataset/gseq_processing/scratch/resequencing/1000_bulls_2018/HERNZLM000281000146 /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9FHAADXX-1263-05-5-1_TAGCTT_L001_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9FHAADXX-1263-05-5-1_TAGCTT_L001_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9FHAADXX-1263-05-5-1_TAGCTT_L002_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9FHAADXX-1263-05-5-1_TAGCTT_L002_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WBCADXX-1263-05-5-1_TAGCTT_L002_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WBCADXX-1263-05-5-1_TAGCTT_L002_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WUGADXX-1263-05-5-1_TAGCTT_L001_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WUGADXX-1263-05-5-1_TAGCTT_L001_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WUGADXX-1263-05-5-1_TAGCTT_L002_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WUGADXX-1263-05-5-1_TAGCTT_L002_R2_001.fastq.gz\n
+
 \n
 "
 
@@ -135,7 +143,7 @@ function configure_env() {
    cp ./resequencing_prism.sh $OUT_DIR
    cp ./resequencing_prism.mk $OUT_DIR
    cp ./get_rg.py  $OUT_DIR
-   cp ./etc/tardis.toml $OUT_DIR
+   cp ./etc/tardis.toml.4g $OUT_DIR/tardis.toml    # this version points at slurm batch template with 4G spec - good for bwa/ trim step
    echo "
 conda activate /dataset/gseq_processing/active/bin/resequencing_prism/conda/resequencing_prism
 " > $OUT_DIR/resequencing_prism_env.src
@@ -242,18 +250,22 @@ done
    if [ -f $merge_script_filename ]; then
       if [ ! $FORCE == yes ]; then
          echo "found existing merge script $merge_script_filename - will re-use (use -f to force rebuild ) "
-         continue
-      fi
+      else 
+         rm -f $merge_script_filename
+      fi 
    fi
 
-   echo "#!/bin/bash
+   if [ ! -f $merge_script_filename ]; then
+      echo "#!/bin/bash
 cd $OUT_DIR
+cp $RESEQUENCING_PRISM_BIN/etc/tardis.toml $OUT_DIR/tardis.toml  # this version points at the larger memory slurm template, needed for merge steps
 time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc picard MergeSamFiles $picard_merge_string O=${sample_name}.sorted.bam VALIDATION_STRINGENCY=LENIENT ASSUME_SORTED=true MERGE_SEQUENCE_DICTIONARIES=true
 
 time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc picard MarkDuplicates TMP_DIR=$OUT_DIR I=${sample_name}.sorted.bam O=${sample_name}_dedup.bam M=${sample_name}_dedup.metrics OPTICAL_DUPLICATE_PIXEL_DISTANCE=$OPTICAL_DUPLICATE_PIXEL_DISTANCE CREATE_INDEX=true VALIDATION_STRINGENCY=LENIENT
 
 " > $merge_script_filename
-   chmod +x $merge_script_filename
+      chmod +x $merge_script_filename
+   fi
 
 
 
@@ -263,18 +275,22 @@ time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc picard 
    if [ -f $recal_script_filename ]; then
       if [ ! $FORCE == yes ]; then
          echo "found existing recal script $recal_script_filename - will re-use (use -f to force rebuild ) "
-         continue
+      else
+         rm $recal_script_filename
       fi
    fi
 
-   echo "#!/bin/bash
+   if [ ! -f $recal_script_filename ]; then
+      echo "#!/bin/bash
 cd $OUT_DIR
+cp $RESEQUENCING_PRISM_BIN/etc/tardis.toml $OUT_DIR/tardis.toml  # this version points at the larger memory slurm template, needed for merge steps
 time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc java -Xmx80G -jar $gatk_jar  -T BaseRecalibrator -nct 8 -R $ref_genome_sequence  -I ${sample_name}_dedup.bam -knownSites:vcf $variant_info -o ${sample_name}.recal.table
 
 time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc java -Xmx80G -jar $gatk_jar -T PrintReads -nct 8 -R $ref_genome_sequence -I ${sample_name}_dedup.bam  -BQSR ${sample_name}.recal.table -o ${sample_name}_dedup_recal.bam
 
 " > $recal_script_filename
-   chmod +x $recal_script_filename
+      chmod +x $recal_script_filename
+   fi
 
 
    # generate vcf script
@@ -283,17 +299,21 @@ time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc java -X
    if [ -f $vcf_script_filename ]; then
       if [ ! $FORCE == yes ]; then
          echo "found existing vcf script $vcf_script_filename - will re-use (use -f to force rebuild ) "
-         continue
+      else 
+         rm $vcf_script_filename
       fi
    fi
 
-   echo "#!/bin/bash
+   if [ ! -f $vcf_script_filename ]; then
+      echo "#!/bin/bash
 cd $OUT_DIR
+cp $RESEQUENCING_PRISM_BIN/etc/tardis.toml $OUT_DIR/tardis.toml  # this version points at the larger memory slurm template, needed for merge steps
 time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc java -Xmx80G -jar $gatk_jar -T HaplotypeCaller -nct 8 -R $ref_genome_sequence -I ${sample_name}_dedup_recal.bam -o ${sample_name}_dedup_recal.g.vcf.gz -ERC GVCF -variant_index_type LINEAR -variant_index_parameter 128000
 
 
 " > $vcf_script_filename
-   chmod +x $vcf_script_filename
+      chmod +x $vcf_script_filename
+   fi
 }
 
 
@@ -311,12 +331,17 @@ function run_prism() {
 }
 
 function clean() {
-   rm -rf $OUT_DIR/tardis_*
-   rm $OUT_DIR/*.sam
+   if [ $DEBUG == "no" ]; then
+      rm -rf $OUT_DIR/tardis_*
+      rm $OUT_DIR/*.sam
+   else 
+      echo "debug mode, skipping clean"
+   fi
 }
 
 
 function merge_and_gatk_prism() {
+   cp $RESEQUENCING_PRISM_BIN/etc/tardis.toml $OUT_DIR/tardis.toml  # this version points at the larger memory slurm template, needed for merge steps
    $merge_script_filename > $OUT_DIR/merge.log 2>&1
    $recal_script_filename > $OUT_DIR/recal.log 2>&1
    $vcf_script_filename > $OUT_DIR/vcf.log 2>&1
