@@ -14,7 +14,10 @@ jobtemplatefile = "/dataset/gseq_processing/active/bin/resequencing_prism/etc/sl
 keep_conditioned_data = false
 quiet = false
 max_processes = 20
-max_tasks = 300
+# max_tasks is set low to avoid "over splitting" of the input files - need large chunks as bwa is fast
+# small chunks (e.g. 1000000 reads ) end up being inefficient. max_tasks 40 
+# would yield a chunk size of maybe 6000000 (for a file of 300m reads or so) 
+max_tasks = 40
 min_sample_size = 500
 hpctype = "slurm"
 #batonfile =
