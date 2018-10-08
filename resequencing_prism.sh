@@ -190,8 +190,6 @@ function get_targets() {
       prefix=`./get_rg.py --subject $sample_name  -t common_prefix $R1 $R2`
       picard_merge_string="$picard_merge_string I=${prefix}_paired.sorted.bam I=${prefix}_1.sorted.bam I=${prefix}_2.sorted.bam"
 
-    
-
       # generate wrapper alignment script 
       script_filename=$OUT_DIR/${moniker}.sh
 
@@ -261,7 +259,12 @@ cd $OUT_DIR
 cp $RESEQUENCING_PRISM_BIN/etc/tardis.toml $OUT_DIR/tardis.toml  # this version points at the larger memory slurm template, needed for merge steps
 time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc picard MergeSamFiles $picard_merge_string O=${sample_name}.sorted.bam VALIDATION_STRINGENCY=LENIENT ASSUME_SORTED=true MERGE_SEQUENCE_DICTIONARIES=true
 
-time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc picard MarkDuplicates TMP_DIR=$OUT_DIR I=${sample_name}.sorted.bam O=${sample_name}_dedup.bam M=${sample_name}_dedup.metrics OPTICAL_DUPLICATE_PIXEL_DISTANCE=$OPTICAL_DUPLICATE_PIXEL_DISTANCE CREATE_INDEX=true VALIDATION_STRINGENCY=LENIENT
+# either : 
+#time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc picard MarkDuplicates TMP_DIR=$OUT_DIR I=${sample_name}.sorted.bam O=${sample_name}_dedup.bam M=${sample_name}_dedup.metrics OPTICAL_DUPLICATE_PIXEL_DISTANCE=$OPTICAL_DUPLICATE_PIXEL_DISTANCE CREATE_INDEX=true VALIDATION_STRINGENCY=LENIENT
+
+# or : (as above tends to memory fault)  
+PICARD_JAR=/dataset/gseq_processing/active/bin/resequencing_prism/conda/resequencing_prism/share/picard-2.18.2-0/picard.jar
+time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc java -Xmx80G -jar \$PICARD_JAR  MarkDuplicates TMP_DIR=$OUT_DIR I=${sample_name}.sorted.bam O=${sample_name}_dedup.bam M=${sample_name}_dedup.metrics OPTICAL_DUPLICATE_PIXEL_DISTANCE=$OPTICAL_DUPLICATE_PIXEL_DISTANCE CREATE_INDEX=true VALIDATION_STRINGENCY=LENIENT
 
 " > $merge_script_filename
       chmod +x $merge_script_filename
@@ -313,6 +316,33 @@ time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc java -X
 
 " > $vcf_script_filename
       chmod +x $vcf_script_filename
+   fi
+
+   # generate post_vcf script
+   post_vcf_script_filename=$OUT_DIR/${moniker}.post_vcf.sh
+
+   if [ -f $post_vcf_script_filename ]; then
+      if [ ! $FORCE == yes ]; then
+         echo "found existing post_vcf script $post_vcf_script_filename - will re-use (use -f to force rebuild ) "
+      else
+         rm $post_vcf_script_filename
+      fi
+   fi
+
+   if [ ! -f $post_vcf_script_filename ]; then
+      echo "#!/bin/bash
+cd $OUT_DIR
+# coverage 
+cp $RESEQUENCING_PRISM_BIN/etc/tardis.toml $OUT_DIR/tardis.toml  # this version points at the larger memory slurm template, needed for merge steps
+time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc java -Xmx80G -jar $gatk_jar -T DepthOfCoverage -R $ref_genome_sequence -I ${sample_name}_dedup_recal.bam --omitDepthOutputAtEachBase --logging_level ERROR --summaryCoverageThreshold 10 --summaryCoverageThreshold 20 --summaryCoverageThreshold 30 --summaryCoverageThreshold 40 --summaryCoverageThreshold 50 --summaryCoverageThreshold 80 --summaryCoverageThreshold 90 --summaryCoverageThreshold 100 --summaryCoverageThreshold 150 --minBaseQuality 15 --minMappingQuality 30 --start 1 --stop 1000 --nBins 999 -dt NONE -o ${sample_name}_dedup_recal.coverage
+
+# checksums
+for file in *${sample_name}* ; do
+   md5sum -b \$file >> checksums.txt
+done
+   
+" > $post_vcf_script_filename
+      chmod +x $post_vcf_script_filename
    fi
 }
 

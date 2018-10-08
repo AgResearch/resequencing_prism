@@ -8,7 +8,7 @@ chunksize = -1  # -1 means it will be calculated to yield <= max_tasks
 #from_record =
 #to_record =
 dry_run = false
-jobtemplatefile = "/dataset/gseq_processing/active/bin/resequencing_prism/etc/slurm_array_job"
+jobtemplatefile = "/dataset/gseq_processing/active/bin/resequencing_prism/etc/slurm_array_job_16g"
 #shelltemplatefile =
 #runtimeconfigsourcefile =
 keep_conditioned_data = false
