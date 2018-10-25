@@ -8,8 +8,31 @@
 ##############################################
 # how to make resequencing 
 ##############################################
-%.resequencing_prism: 
-	$*.sh
+%.archive: %.post_vcf
+	$@.sh
+	date > $@
+
+%.post_vcf: %.vcf
+	$@.sh
+	date > $@
+
+%.vcf: %.recal
+	$@.sh
+	date >$@
+
+%.recal: %.merge
+	$@.sh
+	date >$@
+
+%.merge: %.allbwa
+	$@.sh
+	date >$@
+
+%.allbwa:
+	$@.sh
+
+%.bwa: 
+	$@.sh
 	date > $@
 
 
@@ -23,4 +46,3 @@
 ##############################################
 clean:
 	echo "no clean for now" 
-

@@ -8,8 +8,10 @@ function get_opts() {
    DEBUG=no
    HPC_TYPE=slurm
    OUT_DIR=
+   ARCHIVE_DIR=
    MAX_TASKS=1
    FORCE=no
+   analysis="post_vcf"
    ref_genome_index=
    ref_genome_sequence=
    variant_info=
@@ -19,7 +21,7 @@ function get_opts() {
    OPTICAL_DUPLICATE_PIXEL_DISTANCE=100
    help_text="
 \n
-./resequencing_prism.sh  [-h (=help)] [-n (=dry run)] [-d (=debug - no clean up)] [-f (=overwrite any existing scritps)] [-C local|slurm] -s sample_namea -r ref_genome_index -b bwa_index -v variant_info -O outdir  input_R1 input_R2 [ input_R1 input_R2 . . . ] \n
+./resequencing_prism.sh  [-h (=help)] [-n (=dry run)] [-d (=debug - no clean up)] [-f (=overwrite any existing scritps)] [-C local|slurm] [-a archive|post_vcf|vcf|recal merge|allbwa ] [ -A archive_dir ] -s sample_namea -r ref_genome_index -b bwa_index -v variant_info -O outdir  input_R1 input_R2 [ input_R1 input_R2 . . . ] \n
 \n
 \n
 examples:\n
@@ -36,7 +38,7 @@ examples:\n
 "
 
    # defaults:
-   while getopts ":nhdfO:C:r:s:b:v:" opt; do
+   while getopts ":nhdfO:C:r:s:b:v:a:A:" opt; do
    case $opt in
        n)
          DRY_RUN=yes
@@ -54,6 +56,9 @@ examples:\n
        O)
          OUT_DIR=$OPTARG
          ;;
+       A)
+         ARCHIVE_DIR=$OPTARG
+         ;;
        C)
          HPC_TYPE=$OPTARG
          ;;
@@ -68,6 +73,9 @@ examples:\n
          ;;
        s)
          sample_name=$OPTARG
+         ;;
+       a)
+         analysis=$OPTARG
          ;;
        \?)
          echo "Invalid option: -$OPTARG" >&2
@@ -104,10 +112,23 @@ function check_opts() {
       echo "OUT_DIR $OUT_DIR not found"
       exit 1
    fi
+   if [ ! -z "$ARCHIVE_DIR" ]; then
+      if [ ! -d $ARCHIVE_DIR ]; then
+         echo "archive dir $ARCHIVE_DIR not found"
+         exit 1
+      fi
+   fi
+
    if [[ $HPC_TYPE != "local" && $HPC_TYPE != "slurm" ]]; then
       echo "HPC_TYPE must be one of local, slurm"
       exit 1
    fi
+
+   if [[ ( $analysis != archive ) && ( $analysis != post_vcf ) && ( $analysis != vcf ) && ( $analysis != recal ) && ( $analysis != merge ) && ( $analysis != allbwa ) ]] ; then 
+      echo "analysis must be one of archive, post_vcf, vcf, recal, merge, allbwa"
+      exit 1
+   fi
+
    if [ ! -f ${ref_genome_index}.bwt  ]; then
       echo "bad index  (cant see ${ref_genome_index}.bwt ) (you might need to supply the full path ?)"
       exit 1
@@ -165,7 +186,8 @@ function check_env() {
 
 function get_targets() {
 
-   rm -f $OUT_DIR/resequencing_targets.txt
+   rm -f $OUT_DIR/bwa_targets.txt
+   rm -f $OUT_DIR/post_bwa_targets.txt
    rm -f $OUT_DIR/input_file_list.txt
    picard_merge_input_string=""
 
@@ -185,13 +207,13 @@ function get_targets() {
       parameters_moniker=${parameters_moniker}.`basename $ref_genome_index`
 
       moniker=${file_base}.${parameters_moniker}
-      echo $OUT_DIR/${moniker}.resequencing_prism >> $OUT_DIR/resequencing_targets.txt
+      echo $OUT_DIR/${moniker}.bwa >> $OUT_DIR/bwa_targets.txt
 
       prefix=`./get_rg.py --subject $sample_name  -t common_prefix $R1 $R2`
       picard_merge_string="$picard_merge_string I=${prefix}_paired.sorted.bam I=${prefix}_1.sorted.bam I=${prefix}_2.sorted.bam"
 
       # generate wrapper alignment script 
-      script_filename=$OUT_DIR/${moniker}.sh
+      script_filename=$OUT_DIR/${moniker}.bwa.sh
 
       if [ -f $script_filename ]; then
          if [ ! $FORCE == yes ]; then
@@ -242,6 +264,35 @@ done
    moniker="allfiles_$prefix"
 
 
+   echo $OUT_DIR/${moniker}.${analysis} >> $OUT_DIR/post_bwa_targets.txt
+
+   
+   # generate a script which decides whether the bwa pre-requisite for all the subsequent steps has been met - i.e.
+   # that all the output bams have been made. 
+   allbwa_script_filename=$OUT_DIR/${moniker}.allbwa.sh
+   if [ -f $allbwa_script_filename ]; then
+      if [ ! $FORCE == yes ]; then
+         echo "found existing allbwa script $merge_script_filename - will re-use (use -f to force rebuild ) "
+      else
+         rm -f $allbwa_script_filename
+      fi
+   fi
+
+   if [ ! -f $allbwa_script_filename ]; then
+      echo "#!/bin/bash
+for target in \`cat $OUT_DIR/bwa_targets.txt\`; do
+   if [ ! -f \$target ]; then
+      echo "warning, prerequisite \$target missing - all bams have not been made"
+      exit 1
+   fi
+done
+# all done so create the allbwa landmark needed for subsequent steps
+date > $OUT_DIR/${moniker}.allbwa
+" > $allbwa_script_filename
+      chmod +x $allbwa_script_filename
+   fi
+
+
    # generate merge and mark duplicates script
    merge_script_filename=$OUT_DIR/${moniker}.merge.sh
 
@@ -269,7 +320,6 @@ time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc java -X
 " > $merge_script_filename
       chmod +x $merge_script_filename
    fi
-
 
 
    # generate recalibrate script
@@ -344,12 +394,35 @@ done
 " > $post_vcf_script_filename
       chmod +x $post_vcf_script_filename
    fi
+
+
+   # generate archive script 
+   archive_script_filename=$OUT_DIR/${moniker}.archive.sh
+
+   if [ -f $archive_script_filename ]; then
+      if [ ! $FORCE == yes ]; then
+         echo "found existing archive script $archive_script_filename - will re-use (use -f to force rebuild ) "
+      else
+         rm $archive_script_filename
+      fi
+   fi
+
+   if [ ! -f $archive_script_filename ]; then
+      echo "#!/bin/bash
+cd $OUT_DIR
+for file in *.log *.sh *.trim_summary checksums.txt *_dedup.metrics *_dedup_recal.bam *_dedup_recal.bai *.coverage.* *.vcf.gz *.vcf.gz.tbi *.recal.table; do
+   cp -p \$file $ARCHIVE_DIR
+done
+" > $archive_script_filename
+      chmod +x $archive_script_filename
+   fi
+
 }
 
 
 function fake_prism() {
    echo "dry run ! "
-   make -n -f resequencing_prism.mk -d -k  --no-builtin-rules -j 16 `cat $OUT_DIR/resequencing_targets.txt` > $OUT_DIR/resequencing_prism.log 2>&1
+   make -n -f resequencing_prism.mk -d -k  --no-builtin-rules -j 16 `cat $OUT_DIR/bwa_targets.txt` > $OUT_DIR/bwa_prism.log 2>&1
    echo "dry run : summary commands are 
    "
    exit 0
@@ -357,7 +430,7 @@ function fake_prism() {
 
 function run_prism() {
    # this prepares each file
-   make -f resequencing_prism.mk -d -k  --no-builtin-rules -j 16 `cat $OUT_DIR/resequencing_targets.txt` > $OUT_DIR/resequencing_prism.log 2>&1
+   make -f resequencing_prism.mk -d -k  --no-builtin-rules -j 16 `cat $OUT_DIR/bwa_targets.txt` > $OUT_DIR/bwa_prism.log 2>&1
 }
 
 function clean() {
@@ -372,9 +445,7 @@ function clean() {
 
 function merge_and_gatk_prism() {
    cp $RESEQUENCING_PRISM_BIN/etc/tardis.toml $OUT_DIR/tardis.toml  # this version points at the larger memory slurm template, needed for merge steps
-   $merge_script_filename > $OUT_DIR/merge.log 2>&1
-   $recal_script_filename > $OUT_DIR/recal.log 2>&1
-   $vcf_script_filename > $OUT_DIR/vcf.log 2>&1
+   make -f resequencing_prism.mk -d -k  --no-builtin-rules -j 16 `cat $OUT_DIR/post_bwa_targets.txt` > $OUT_DIR/post_bwa_prism.log 2>&1
 }
 
 
