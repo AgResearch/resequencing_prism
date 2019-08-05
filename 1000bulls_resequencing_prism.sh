@@ -21,18 +21,18 @@ function get_opts() {
    OPTICAL_DUPLICATE_PIXEL_DISTANCE=100
    help_text="
 \n
-./resequencing_prism.sh  [-h (=help)] [-n (=dry run)] [-d (=debug - no clean up)] [-f (=overwrite any existing scritps)] [-C local|slurm] [-a archive|post_vcf|vcf|recal merge|allbwa ] [ -A archive_dir ] -s sample_namea -r ref_genome_index -b bwa_index -v variant_info -O outdir  input_R1 input_R2 [ input_R1 input_R2 . . . ] \n
+./1000bulls_resequencing_prism.sh  [-h (=help)] [-n (=dry run)] [-d (=debug - no clean up)] [-f (=overwrite any existing scritps)] [-C local|slurm] [-a archive|post_vcf|vcf|recal merge|allbwa ] [ -A archive_dir ] -s sample_namea -r ref_genome_index -b bwa_index -v variant_info -O outdir  input_R1 input_R2 [ input_R1 input_R2 . . . ] \n
 \n
 \n
 examples:\n
 # dry run - only generate scripts etc\n
-./resequencing_prism.sh -n -r /dataset/datacache/scratch/misc/genomes/ARS-UCD1.2_Btau5.0.1Y.fa -b /dataset/datacache/scratch/misc/indexes/bwa/ARS-UCD1.2_Btau5.0.1Y.fa -v /dataset/datacache/scratch/misc/genomes/ARS1.2PlusY_BQSR.vcf.gz -s AANNZLM017427080180 -O /dataset/gseq_processing/scratch/resequencing/1000_bulls_2018/AANNZLM017427080180   /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R2_001.fastq.gz\n
+./1000bulls_resequencing_prism.sh -n -r /dataset/datacache/scratch/misc/genomes/ARS-UCD1.2_Btau5.0.1Y.fa -b /dataset/datacache/scratch/misc/indexes/bwa/ARS-UCD1.2_Btau5.0.1Y.fa -v /dataset/datacache/scratch/misc/genomes/ARS1.2PlusY_BQSR.vcf.gz -s AANNZLM017427080180 -O /dataset/gseq_processing/scratch/resequencing/1000_bulls_2018/AANNZLM017427080180   /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R2_001.fastq.gz\n
 
 # run everything on local machine (default is to schedule everything on slurm cluster) \n
-./resequencing_prism.sh -C local -r /dataset/datacache/scratch/misc/genomes/ARS-UCD1.2_Btau5.0.1Y.fa -b /dataset/datacache/scratch/misc/indexes/bwa/ARS-UCD1.2_Btau5.0.1Y.fa -v /dataset/datacache/scratch/misc/genomes/ARS1.2PlusY_BQSR.vcf.gz -s AANNZLM017427080180 -O /dataset/gseq_processing/scratch/resequencing/1000_bulls_2018/AANNZLM017427080180   /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R2_001.fastq.gz\n
+./1000bulls_resequencing_prism.sh -C local -r /dataset/datacache/scratch/misc/genomes/ARS-UCD1.2_Btau5.0.1Y.fa -b /dataset/datacache/scratch/misc/indexes/bwa/ARS-UCD1.2_Btau5.0.1Y.fa -v /dataset/datacache/scratch/misc/genomes/ARS1.2PlusY_BQSR.vcf.gz -s AANNZLM017427080180 -O /dataset/gseq_processing/scratch/resequencing/1000_bulls_2018/AANNZLM017427080180   /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3P58ACXX/Raw/C3P58ACXX-1143-15-5-1_NoIndex_L003_R2_001.fastq.gz\n
 
 # process multiple pairs of input files 
-./resequencing_prism.sh -r /dataset/datacache/scratch/misc/genomes/ARS-UCD1.2_Btau5.0.1Y.fa -b /dataset/datacache/scratch/misc/indexes/bwa/ARS-UCD1.2_Btau5.0.1Y.fa -v /dataset/datacache/scratch/misc/genomes/ARS1.2PlusY_BQSR.vcf.gz -s HERNZLM000281000146 -O /dataset/gseq_processing/scratch/resequencing/1000_bulls_2018/HERNZLM000281000146 /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9FHAADXX-1263-05-5-1_TAGCTT_L001_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9FHAADXX-1263-05-5-1_TAGCTT_L001_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9FHAADXX-1263-05-5-1_TAGCTT_L002_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9FHAADXX-1263-05-5-1_TAGCTT_L002_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WBCADXX-1263-05-5-1_TAGCTT_L002_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WBCADXX-1263-05-5-1_TAGCTT_L002_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WUGADXX-1263-05-5-1_TAGCTT_L001_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WUGADXX-1263-05-5-1_TAGCTT_L001_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WUGADXX-1263-05-5-1_TAGCTT_L002_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WUGADXX-1263-05-5-1_TAGCTT_L002_R2_001.fastq.gz\n
+./1000bulls_resequencing_prism.sh -r /dataset/datacache/scratch/misc/genomes/ARS-UCD1.2_Btau5.0.1Y.fa -b /dataset/datacache/scratch/misc/indexes/bwa/ARS-UCD1.2_Btau5.0.1Y.fa -v /dataset/datacache/scratch/misc/genomes/ARS1.2PlusY_BQSR.vcf.gz -s HERNZLM000281000146 -O /dataset/gseq_processing/scratch/resequencing/1000_bulls_2018/HERNZLM000281000146 /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9FHAADXX-1263-05-5-1_TAGCTT_L001_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9FHAADXX-1263-05-5-1_TAGCTT_L001_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9FHAADXX-1263-05-5-1_TAGCTT_L002_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9FHAADXX-1263-05-5-1_TAGCTT_L002_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WBCADXX-1263-05-5-1_TAGCTT_L002_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WBCADXX-1263-05-5-1_TAGCTT_L002_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WUGADXX-1263-05-5-1_TAGCTT_L001_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WUGADXX-1263-05-5-1_TAGCTT_L001_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WUGADXX-1263-05-5-1_TAGCTT_L002_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01263_v2/Raw/H9WUGADXX-1263-05-5-1_TAGCTT_L002_R2_001.fastq.gz\n
 
 \n
 "
@@ -161,8 +161,8 @@ function configure_env() {
    export CONDA_ENVS_PATH=$CONDA_ENVS_PATH:/dataset/bioinformatics_dev/active/conda-env
 
    cd $RESEQUENCING_PRISM_BIN
-   cp ./resequencing_prism.sh $OUT_DIR
-   cp ./resequencing_prism.mk $OUT_DIR
+   cp ./1000bulls_resequencing_prism.sh $OUT_DIR
+   cp ./1000bulls_resequencing_prism.mk $OUT_DIR
    cp ./get_rg.py  $OUT_DIR
    cp ./etc/tardis.toml.4g $OUT_DIR/tardis.toml    # this version points at slurm batch template with 4G spec - good for bwa/ trim step
    echo "
@@ -422,7 +422,7 @@ done
 
 function fake_prism() {
    echo "dry run ! "
-   make -n -f resequencing_prism.mk -d -k  --no-builtin-rules -j 16 `cat $OUT_DIR/bwa_targets.txt` > $OUT_DIR/bwa_prism.log 2>&1
+   make -n -f 1000bulls_resequencing_prism.mk -d -k  --no-builtin-rules -j 16 `cat $OUT_DIR/bwa_targets.txt` > $OUT_DIR/bwa_prism.log 2>&1
    echo "dry run : summary commands are 
    "
    exit 0
@@ -430,13 +430,13 @@ function fake_prism() {
 
 function run_prism() {
    # this prepares each file
-   make -f resequencing_prism.mk -d -k  --no-builtin-rules -j 16 `cat $OUT_DIR/bwa_targets.txt` > $OUT_DIR/bwa_prism.log 2>&1
+   make -f 1000bulls_resequencing_prism.mk -d -k  --no-builtin-rules -j 16 `cat $OUT_DIR/bwa_targets.txt` > $OUT_DIR/bwa_prism.log 2>&1
 }
 
 function clean() {
    if [ $DEBUG == "no" ]; then
-      rm -rf $OUT_DIR/tardis_*
-      rm $OUT_DIR/*.sam
+      nohup rm -rf $OUT_DIR/tardis_* > $OUT_DIR/resequencing_clean.log 2>&1 &
+      rm $OUT_DIR/*.sam >> $OUT_DIR/resequencing_clean.log 2>&1 &
    else 
       echo "debug mode, skipping clean"
    fi
@@ -445,7 +445,7 @@ function clean() {
 
 function merge_and_gatk_prism() {
    cp $RESEQUENCING_PRISM_BIN/etc/tardis.toml $OUT_DIR/tardis.toml  # this version points at the larger memory slurm template, needed for merge steps
-   make -f resequencing_prism.mk -d -k  --no-builtin-rules -j 16 `cat $OUT_DIR/post_bwa_targets.txt` > $OUT_DIR/post_bwa_prism.log 2>&1
+   make -f 1000bulls_resequencing_prism.mk -d -k  --no-builtin-rules -j 16 `cat $OUT_DIR/post_bwa_targets.txt` > $OUT_DIR/post_bwa_prism.log 2>&1
 }
 
 

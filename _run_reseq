@@ -1,0 +1,321 @@
+#!/bin/sh
+
+export SEQ_PRISMS_BIN=/dataset/gseq_processing/active/bin/resequencing_prism/seq_prisms 
+export RESEQUENCING_PRISM_BIN=/dataset/gseq_processing/active/bin/resequencing_prism
+
+
+resequencing_version=$1
+
+function read_answer_with_default() {
+   read answer
+   if [ -z "$answer" ]; then
+      answer=$@
+   fi
+}
+
+function get_line_count() {
+   line_count=`wc -l $1 | awk '{print $1}' -`
+}
+
+function get_run_opts() {
+
+   DRY_RUN=no
+   DEBUG=no
+   HPC_TYPE=slurm
+   FILES=""
+   OUT_ROOT=""
+   REF_GENOME_INDEX=""
+   REF_GENOME_SEQUENCE=""
+   VARIANT_INFO=""
+   SAMPLE_NAME=""
+   OPTICAL_DUPLICATE_PIXEL_DISTANCE=""
+   PROCESSING_ROOT=/dataset/gseq_processing/scratch/resequencing
+
+
+echo "*** resequencing analysis version $resequencing_version ***
+* note that you can paste into your terminal window by clicking your right mouse button
+* you can select text in the terminal window using your left mouse button
+* at any stage you can press CTRL-C to exit the dialogs
+"
+
+   ####### get and check SAMPLE_NAME
+   while [ 1 ]; do
+      echo "please enter the sample name (for example animal ID - this will be included in the final BAM file) : "
+      read_answer_with_default "_not_supplied_"
+      if [ $answer != "_not_supplied_" ]; then
+         SAMPLE_NAME=$answer
+         break
+      fi
+   done
+   echo "processing $SAMPLE_NAME " 
+      
+
+   ####### get and check DATAFILES
+   while [ 1 ] ; do
+      echo "
+please give either the names of the paired-end files for $SAMPLE_NAME, or a wildcard pattern which will select the files.
+
+If you supply the names, these should be in a single line, include the full path, and ordered R1 R2 [ R1 R2 . . . . ]
+- i.e. you can supply more than pair, and the names should be in R1 R2 order as shown.
+
+examples - supply a single pair : 
+
+/dataset/KCCG/archive/R_190523_MICFRE_DNA_M001/H2TJKCCX2_1_190528_FD09253856_Other__R_190523_MICFRE_DNA_M001_R1.fastq.gz /dataset/KCCG/archive/R_190523_MICFRE_DNA_M001/H2TJKCCX2_1_190528_FD09253856_Other__R_190523_MICFRE_DNA_M001_R2.fastq.gz
+
+
+supply many pairs : 
+
+/dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3PACACXX/Raw/C3PACACXX-1143-02-5-1_CTTGTA_L001_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3PACACXX/Raw/C3PACACXX-1143-02-5-1_CTTGTA_L001_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3PACACXX/Raw/C3PACACXX-1143-02-5-1_CTTGTA_L002_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3PACACXX/Raw/C3PACACXX-1143-02-5-1_CTTGTA_L002_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3PACACXX/Raw/C3PACACXX-1143-02-5-1_CTTGTA_L003_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3PACACXX/Raw/C3PACACXX-1143-02-5-1_CTTGTA_L003_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3PACACXX/Raw/C3PACACXX-1143-02-5-1_CTTGTA_L004_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3PACACXX/Raw/C3PACACXX-1143-02-5-1_CTTGTA_L004_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3PACACXX/Raw/C3PACACXX-1143-02-5-1_CTTGTA_L005_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3PACACXX/Raw/C3PACACXX-1143-02-5-1_CTTGTA_L005_R2_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3PACACXX/Raw/C3PACACXX-1143-02-5-1_CTTGTA_L006_R1_001.fastq.gz /dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C3PACACXX/Raw/C3PACACXX-1143-02-5-1_CTTGTA_L006_R2_001.fastq.gz 
+
+supply a folder with file pattern : 
+
+/dataset/AG_1000_bulls/archive/nzgl01143/NZGL01143_C42ECACXX/Raw/*GAGTGG*.fastq.gz
+
+"
+      read pattern
+      if [ ! -z "$pattern" ]; then 
+         # checks
+
+         filenames=`ls $pattern`
+         if [ $? != 0 ]; then
+            echo "***** error, could not find files using $pattern *****"
+            continue
+         fi
+
+         DATAFILES="" 
+         for file in $filenames; do
+            ls $file > /dev/null 2>&1
+            if [ $? != 0 ]; then
+               echo "***** error, could not list $file *****"
+               DATAFILES=""
+               break
+            fi
+            DATAFILES="$DATAFILES $file"
+         done
+         if [ -z "$DATAFILES" ]; then
+            continue
+         fi
+
+         echo "will use
+
+         $DATAFILES
+
+         is that OK ? (y/n)"
+         read_answer_with_default y
+         if [ $answer == "y" ]; then
+            break
+         fi
+      fi
+   done
+
+
+   # get the output folder
+   for file in $DATAFILES; do
+      datadir=`dirname $file`
+      outdir=`echo $datadir | sed 's/active/scratch/g' - | sed 's/archive/scratch/g' - `
+      if [ $datadir == $outdir ]; then
+         OUT_ROOT="$PROCESSING_ROOT/$SAMPLE_NAME"
+      else
+         OUT_ROOT="$outdir/$SAMPLE_NAME"
+      fi
+      break
+   done
+
+   while [ 1 ]; do
+      echo "
+
+please specify output folder (default $OUT_ROOT ) "
+      read_answer_with_default $OUT_ROOT
+      
+      OUT_ROOT=$answer
+
+      if [ -d $OUT_ROOT ]; then
+         echo "$OUT_ROOT already exists - are you sure you want to use this ? (n/y)"
+         read_answer_with_default n
+         if [ $answer != "y" ]; then
+            continue 
+         fi
+      else
+         mkdir -p $OUT_ROOT
+         if [ ! -d $OUT_ROOT ]; then
+            echo "unable to create $OUT_ROOT - quitting"
+            exit 1
+         fi
+      fi
+      break
+   done
+
+   ####### get and check reference genome indexes
+   while [ 1 ]; do
+      echo "please specify ref genome BWA index (default /dataset/datacache/scratch/misc/indexes/bwa/ARS-UCD1.2_Btau5.0.1Y.fa )
+      "
+      read_answer_with_default /dataset/datacache/scratch/misc/indexes/bwa/ARS-UCD1.2_Btau5.0.1Y.fa
+      
+      REF_GENOME_INDEX=$answer
+
+      ls ${REF_GENOME_INDEX}* > /dev/null 2>&1
+
+      if [ $? != 0 ]; then
+         echo "no index found for $REF_GENOME_INDEX"
+      else
+         break
+      fi
+   done
+
+
+   ####### get and check reference genome sequence data 
+   while [ 1 ]; do
+      echo "please specify ref genome sequence data (default /dataset/datacache/scratch/misc/genomes/ARS-UCD1.2_Btau5.0.1Y.fa )
+      "
+      read_answer_with_default /dataset/datacache/scratch/misc/genomes/ARS-UCD1.2_Btau5.0.1Y.fa
+
+      REF_GENOME_SEQUENCE=$answer
+
+      ls ${REF_GENOME_SEQUENCE}* > /dev/null 2>&1
+
+      if [ $? != 0 ]; then
+         echo "no index found for $REF_GENOME_SEQUENCE"
+      else
+         break
+      fi
+   done
+
+   ####### get and check variant info 
+   while [ 1 ]; do
+      echo "please specify variant info (default /dataset/datacache/scratch/misc/genomes/ARS1.2PlusY_BQSR.vcf.gz )
+      "
+      read_answer_with_default /dataset/datacache/scratch/misc/genomes/ARS1.2PlusY_BQSR.vcf.gz
+
+      VARIANT_INFO=$answer
+
+      ls ${VARIANT_INFO}* > /dev/null 2>&1
+
+      if [ $? != 0 ]; then
+         echo "no index found for $VARIANT_INFO"
+      else
+         break
+      fi
+   done
+
+
+   ####### get and check whether to run locally or on the cluster
+   echo "
+
+should this run be queued on the compute cluster ? (y/n, default=y. If n, will be run locally)
+"
+   read_answer_with_default y
+   if [ "$answer" != "n" ]; then 
+      HPC_TYPE=slurm
+   else
+      HPC_TYPE=local
+   fi
+   
+
+   ####### check whether want a dry run 
+   echo "
+
+do you want this to be a dry run ? (will generate wrapper scripts etc. but not run them (just press Enter for default n, or enter y)
+"
+   read_answer_with_default n
+   DRY_RUN=$answer
+   
+} # get_run_opts
+
+function check_opts() {
+   # nothing here yet 
+   echo ""
+}
+
+function echo_opts() {
+   # nothing here yet 
+   echo ""
+}
+
+
+#
+# edit this method to set required environment (or set up
+# before running this script)
+#
+function configure_env() {
+   # not much here yet 
+   cd $OUT_ROOT
+   cp $RESEQUENCING_PRISM_BIN/1000bulls_resequencing_prism.mk $OUT_ROOT
+   cp $RESEQUENCING_PRISM_BIN/1000bulls_resequencing_prism.sh $OUT_ROOT
+   cd $OUT_ROOT
+}
+
+
+function check_env() {
+   # nothing here yet 
+   echo ""
+}
+
+function fake_prism() {
+   echo "dry run ! 
+
+(logging to $OUT_ROOT/run.log
+
+   "
+
+   ./1000bulls_resequencing_prism.sh -n -f -r $REF_GENOME_SEQUENCE  -b $REF_GENOME_INDEX -v $VARIANT_INFO -s $SAMPLE_NAME -O $OUT_ROOT $DATAFILES >  $OUT_ROOT/run.log  2>&1
+
+echo "
+** done **
+
+(review at $OUT_ROOT )
+"
+
+   exit 0
+}
+
+function run_prism() {
+   cd $OUT_ROOT
+
+   echo "
+cd $OUT_ROOT
+
+./1000bulls_resequencing_prism.sh -f -r $REF_GENOME_SEQUENCE  -b $REF_GENOME_INDEX -v $VARIANT_INFO -s $SAMPLE_NAME -O $OUT_ROOT $DATAFILES >  $OUT_ROOT/run.log  2>&1
+
+" > $OUT_ROOT/restart.src
+
+   echo "
+starting run , logging to $OUT_ROOT/run.log 
+
+(if you need to kill or restart this run, you can restart using 
+
+source $OUT_ROOT/restart.src
+
+)
+"
+   ./1000bulls_resequencing_prism.sh -f -r $REF_GENOME_SEQUENCE  -b $REF_GENOME_INDEX -v $VARIANT_INFO -s $SAMPLE_NAME -O $OUT_ROOT $DATAFILES >  $OUT_ROOT/run.log  2>&1
+}
+
+function clean() {
+   # clean is done by the called scripts
+   echo ""
+}
+
+
+function main() {
+   get_run_opts
+   check_opts
+   echo_opts
+   check_env
+   configure_env
+
+   if [ $DRY_RUN != "n" ]; then
+      fake_prism
+   else
+      run_prism
+      if [ $? == 0 ] ; then
+         clean
+         echo "* done clean *"  # mainly to yield zero exit code
+      else
+         echo "error state from  run - skipping html page generation and clean-up
+         (check $OUT_ROOT/run.log )"
+         exit 1
+      fi
+  fi
+}
+
+main
