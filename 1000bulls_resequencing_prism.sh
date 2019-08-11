@@ -317,6 +317,10 @@ time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc picard 
 PICARD_JAR=/dataset/gseq_processing/active/bin/resequencing_prism/conda/resequencing_prism/share/picard-2.18.2-0/picard.jar
 time tardis --hpctype $HPC_TYPE -d $OUT_DIR --shell-include-file env.inc java -Xmx80G -jar \$PICARD_JAR  MarkDuplicates TMP_DIR=$OUT_DIR I=${sample_name}.sorted.bam O=${sample_name}_dedup.bam M=${sample_name}_dedup.metrics OPTICAL_DUPLICATE_PIXEL_DISTANCE=$OPTICAL_DUPLICATE_PIXEL_DISTANCE CREATE_INDEX=true VALIDATION_STRINGENCY=LENIENT
 
+# at this point do some cleaning up , of fastq and sam files
+rm -f $OUT_DIR/*/*.fastq  >> $OUT_DIR/resequencing_clean.log 2>&1 
+rm -f $OUT_DIR/*.sam >> $OUT_DIR/resequencing_clean.log 2>&1 
+
 " > $merge_script_filename
       chmod +x $merge_script_filename
    fi
@@ -435,7 +439,7 @@ function run_prism() {
 
 function clean() {
    if [ $DEBUG == "no" ]; then
-      nohup rm -rf $OUT_DIR/tardis_* > $OUT_DIR/resequencing_clean.log 2>&1 &
+      nohup rm -rf $OUT_DIR/tardis_* >> $OUT_DIR/resequencing_clean.log 2>&1 &
       rm $OUT_DIR/*.sam >> $OUT_DIR/resequencing_clean.log 2>&1 &
    else 
       echo "debug mode, skipping clean"

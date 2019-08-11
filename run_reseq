@@ -21,4 +21,4 @@ function get_pipeline() {
    fi
 }
 
-get_pipeline v0.0.1-alpha
+get_pipeline 1000_bullsv0.0.1-alpha
