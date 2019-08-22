@@ -100,7 +100,7 @@ supply a folder with file pattern :
 
          $DATAFILES
 
-         is that OK ? (y/n)"
+         is that OK ? (y/n default y)"
          read_answer_with_default y
          if [ $answer == "y" ]; then
             break
@@ -130,7 +130,7 @@ please specify output folder (default $OUT_ROOT ) "
       OUT_ROOT=$answer
 
       if [ -d $OUT_ROOT ]; then
-         echo "$OUT_ROOT already exists - are you sure you want to use this ? (n/y)"
+         echo "$OUT_ROOT already exists - are you sure you want to use this ? (n/y default n)"
          read_answer_with_default n
          if [ $answer != "y" ]; then
             continue 
@@ -307,6 +307,8 @@ starting run , logging to $OUT_ROOT/run.log
 source $OUT_ROOT/restart.src
 
 )
+
+You can monitor your run using squeue (if this is being run on the cluster) or top (if running locally)
 "
    ./1000bulls_resequencing_prism.sh -f -A $ARCHIVE_DIR/$SAMPLE_NAME -r $REF_GENOME_SEQUENCE  -b $REF_GENOME_INDEX -v $VARIANT_INFO -s $SAMPLE_NAME -O $OUT_ROOT $DATAFILES >  $OUT_ROOT/run.log  2>&1
 }
