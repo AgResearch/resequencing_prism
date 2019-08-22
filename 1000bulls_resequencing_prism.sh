@@ -414,6 +414,10 @@ done
    if [ ! -f $archive_script_filename ]; then
       echo "#!/bin/bash
 cd $OUT_DIR
+if [ ! -d $ARCHIVE_DIR ]; then
+   echo \"error no such folder $ARCHIVE_DIR , archive not done\"
+   exit 1
+fi
 for file in *.log *.sh *.trim_summary checksums.txt *_dedup.metrics *_dedup_recal.bam *_dedup_recal.bai *.coverage.* *.vcf.gz *.vcf.gz.tbi *.recal.table; do
    cp -p \$file $ARCHIVE_DIR
 done

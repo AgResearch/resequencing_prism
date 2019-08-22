@@ -9,37 +9,37 @@
 # how to make resequencing 
 ##############################################
 %.archive: %.post_vcf
-	$@.sh
+	$@.sh > $@.mk.log 2>&1
 	date > $@
 
 %.post_vcf: %.vcf
-	$@.sh
+	$@.sh > $@.mk.log 2>&1
 	date > $@
 
 %.vcf: %.recal
-	$@.sh
+	$@.sh > $@.mk.log 2>&1
 	date >$@
 
 %.recal: %.merge
-	$@.sh
+	$@.sh > $@.mk.log 2>&1
 	date >$@
 
 %.merge: %.allbwa
-	$@.sh
+	$@.sh > $@.mk.log 2>&1
 	date >$@
 
 %.allbwa:
-	$@.sh
+	$@.sh > $@.mk.log 2>&1
 
 %.bwa: 
-	$@.sh
+	$@.sh > $@.mk.log 2>&1
 	date > $@
 
 
 ##############################################
 # specify the intermediate files to keep 
 ##############################################
-.PRECIOUS: %.log %.resequencing_prism 
+.PRECIOUS: %.log %.bwa %.allbwa %.merge %.recal %.vcf %.post_vcf %.archive %.archive %.resequencing_prism 
 
 ##############################################
 # cleaning - not yet doing this using make  
