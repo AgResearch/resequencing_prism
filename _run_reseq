@@ -295,7 +295,7 @@ cd $OUT_ROOT
 export SEQ_PRISMS_BIN=/dataset/gseq_processing/active/bin/resequencing_prism/seq_prisms
 export RESEQUENCING_PRISM_BIN=/dataset/gseq_processing/active/bin/resequencing_prism
 
-./1000bulls_resequencing_prism.sh -f -A $ARCHIVE_DIR/$SAMPLE_NAME -r $REF_GENOME_SEQUENCE  -b $REF_GENOME_INDEX -v $VARIANT_INFO -s $SAMPLE_NAME -O $OUT_ROOT $DATAFILES >  $OUT_ROOT/run.log  2>&1
+./1000bulls_resequencing_prism.sh -A $ARCHIVE_DIR/$SAMPLE_NAME -r $REF_GENOME_SEQUENCE  -b $REF_GENOME_INDEX -v $VARIANT_INFO -s $SAMPLE_NAME -O $OUT_ROOT $DATAFILES >  $OUT_ROOT/run.log  2>&1
 
 " > $OUT_ROOT/restart.src
 
